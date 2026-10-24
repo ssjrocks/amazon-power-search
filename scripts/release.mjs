@@ -13,6 +13,7 @@ import { createHash } from 'node:crypto';
 import { copyFileSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync, existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import path from 'node:path';
+import { verifyRelease } from './verify-release.mjs';
 
 const REPO = 'ssjrocks/amazon-power-search';
 const root = path.resolve(import.meta.dirname, '..');
@@ -115,15 +116,7 @@ try {
     '--repo', REPO, '--title', tag, '--notes', notes, '--latest']);
 
   console.log(`\n== ${tag}: verify what Firefox will fetch ==`);
-  const url = gecko.update_url;
-  const res = await fetch(url);
-  const live = await res.json();
-  const entry = live.addons?.[gecko.id]?.updates?.[0];
-  if (!res.ok || entry?.version !== version) throw new Error(`${url} does not serve ${version} (got ${JSON.stringify(entry)})`);
-  const xpi = Buffer.from(await (await fetch(entry.update_link)).arrayBuffer());
-  const got = createHash('sha256').update(xpi).digest('hex');
-  if (`sha256:${got}` !== entry.update_hash) throw new Error('published .xpi does not match update_hash');
-  console.log(`ok: ${url} -> ${entry.version}, ${entry.update_link}`);
+  await verifyRelease(version);
 } catch (e) {
   revert();
   console.error(`\nrelease failed: ${e.message}`);
