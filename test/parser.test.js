@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
 import { parseSearchPage, parseTotal } from '../src/parser.js';
-import { applyFilters, sortItems, bayes } from '../src/filter.js';
+import { applyFilters, sortItems, bayes, normaliseUnit } from '../src/filter.js';
 
 // Synthetic fixture modelled on amazon.com.au markup observed 2026-10-24.
 // Selectors that matter: data-component-type, data-asin, .a-price .a-offscreen,
@@ -16,7 +16,7 @@ const card = ({ asin, title, price, list, stars, ratings, sponsored, prime, extr
   ${ratings ? `<a aria-label="${ratings} ratings"><span>(35.1K)</span></a>` : ''}
   <span class="a-size-base">50+ bought in past month</span>
   ${price ? `<span class="a-price"><span class="a-offscreen">$${price}</span></span>` : ''}
-  ${list ? `<span class="a-price a-text-price"><span class="a-offscreen">$${list}</span></span>` : ''}
+  ${list ? `<span class="a-price a-text-price" data-a-strike="true"><span class="a-offscreen">$${list}</span></span>` : ''}
   ${prime ? '<i class="a-icon a-icon-prime"></i>' : ''}
   ${extra}
 </div>`;
@@ -125,4 +125,51 @@ test('real amazon.com.au cards: brand line is not the title, sponsored and price
   assert.equal(org.sponsored, false);
   assert.equal(org.price, 33.8);
   assert.equal(org.reviews, 97);
+});
+
+test('real amazon.com.au grocery cards: unit price, list price, delivery, badge, stock', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const html = await readFile(new URL('./fixtures/coffee.html', import.meta.url), 'utf8');
+  const [a, b] = parseSearchPage(doc(html), html).cards;
+  assert.equal(a.brand, 'Lavazza');
+  assert.equal(a.title, 'Qualità Rossa Coffee Beans 1kg');
+  assert.equal(a.price, 36.5);
+  assert.equal(a.unitPrice, 3.65);          // not mistaken for a list price
+  assert.equal(a.unit, '100 g');
+  assert.equal(a.listPrice, null);
+  assert.equal(a.delivery, 'FREE delivery Thu, 5 Nov on your first order');
+  assert.equal(a.deliveryFee, 0);
+  assert.equal(a.badge, "Amazon's Choice");
+  assert.equal(a.lowStock, 4);
+  assert.equal(a.bought, 600);
+  assert.equal(a.reviews, 1204);
+  assert.equal(b.price, 19.99);
+  assert.equal(b.listPrice, 24.99);
+  assert.equal(b.unitPrice, 4);
+  assert.equal(b.deliveryFee, 6.53);
+  assert.equal(b.badge, null);
+});
+
+test('unit prices normalise so per-100 g and per-kg compare', () => {
+  assert.deepEqual(normaliseUnit(3.65, '100 g'), { family: 'weight', price: 3.65 });
+  assert.equal(normaliseUnit(30, 'kg').price, 3);
+  assert.equal(normaliseUnit(2, '100 ml').family, 'volume');
+  assert.equal(normaliseUnit(8, 'l').price, 0.8);
+  assert.equal(normaliseUnit(1.5, 'count').family, 'count');
+  assert.equal(normaliseUnit(null, 'kg'), null);
+  const items = [
+    { asin: 'a', unitPrice: 30, unit: 'kg' },      // 3.00 / 100 g
+    { asin: 'b', unitPrice: 3.65, unit: '100 g' },
+    { asin: 'c', unitPrice: 2.5, unit: '100 g' },
+    { asin: 'd' },
+  ];
+  assert.equal(sortItems(items, 'unit').map((i) => i.asin).join(''), 'cabd'); // 2.50, 3.00, 3.65, none last
+});
+
+test('free delivery filter and delivery-cost sort', () => {
+  const items = [
+    { asin: 'a', deliveryFee: 6.53 }, { asin: 'b', deliveryFee: 0 }, { asin: 'c', deliveryFee: null }, { asin: 'd', deliveryFee: 0 },
+  ];
+  assert.equal(applyFilters(items, { freeDelivery: true }).map((i) => i.asin).join(''), 'bd');
+  assert.equal(sortItems(items, 'delivery').map((i) => i.asin).join(''), 'bdac');
 });

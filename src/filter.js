@@ -18,6 +18,7 @@ export function applyFilters(items, f = {}) {
     if (f.minRating != null && (it.rating == null || it.rating < f.minRating)) return false;
     if (f.minReviews != null && (it.reviews || 0) < f.minReviews) return false;
     if (f.primeOnly && !it.prime) return false;
+    if (f.freeDelivery && it.deliveryFee !== 0) return false;
     if (inc.length && !inc.every((w) => t.includes(w))) return false;
     if (exc.length && exc.some((w) => t.includes(w))) return false;
     return true;
@@ -25,10 +26,34 @@ export function applyFilters(items, f = {}) {
 }
 
 // Each sort is a value getter plus the direction a first click should use.
+// "$3.65 / 100 g" and "$30 / kg" are the same price; put weights on a per-100 g
+// basis and volumes on a per-100 ml basis so they compare. Other units
+// ("count", "metre") stay as they are, grouped by unit name.
+const UNIT_FAMILY = ['weight', 'volume'];
+export function normaliseUnit(unitPrice, unit) {
+  if (unitPrice == null || !unit) return null;
+  const m = unit.trim().toLowerCase().match(/^(\d+(?:\.\d+)?)?\s*(kg|g|l|ml|litres?|liters?)\b/);
+  if (!m) return { family: unit.trim().toLowerCase().replace(/^\d+(?:\.\d+)?\s*/, ''), price: unitPrice / (parseFloat(unit) || 1) };
+  const qty = parseFloat(m[1] ?? '1');
+  const base = { kg: 1000, g: 1, l: 1000, litre: 1000, litres: 1000, liter: 1000, liters: 1000, ml: 1 }[m[2]];
+  const family = ['kg', 'g'].includes(m[2]) ? 'weight' : 'volume';
+  return { family, price: (unitPrice / (qty * base)) * 100 };
+}
+
+// One number per item so unit prices sort: families are kept apart, weight and
+// volume first, then other units alphabetically.
+const familyRank = (f) => (UNIT_FAMILY.includes(f) ? UNIT_FAMILY.indexOf(f) : 2 + [...f].reduce((a, c) => (a * 31 + c.charCodeAt(0)) % 9973, 0));
+const unitSortValue = (i) => {
+  const n = normaliseUnit(i.unitPrice, i.unit);
+  return n ? familyRank(n.family) * 1e6 + n.price : null;
+};
+
 export const SORT_KEYS = {
   title: { get: (i) => (i.title || '').toLowerCase(), dir: 'asc' },
+  brand: { get: (i) => (i.brand || '').toLowerCase() || null, dir: 'asc' },
   price: { get: (i) => i.price, dir: 'asc' },
-  unit: { get: (i) => i.unitPrice, dir: 'asc' },
+  unit: { get: unitSortValue, dir: 'asc' },
+  delivery: { get: (i) => i.deliveryFee, dir: 'asc' },
   rating: { get: (i) => bayes(i.rating, i.reviews), dir: 'desc' },
   reviews: { get: (i) => i.reviews, dir: 'desc' },
   bought: { get: (i) => i.bought, dir: 'desc' },
