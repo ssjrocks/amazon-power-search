@@ -23,8 +23,8 @@ test('ui settings round-trip and survive broken storage', () => {
   const mem = new Map();
   const storage = { getItem: (k) => mem.get(k) ?? null, setItem: (k, v) => mem.set(k, v) };
   assert.deepEqual(loadUi(storage), DEFAULT_UI);
-  saveUi(storage, { view: 'grid', sizes: { list: 80, grid: 260 }, sort: { key: 'rating', dir: 'desc' } });
-  assert.deepEqual(loadUi(storage), { view: 'grid', sizes: { list: 80, grid: 260 }, sort: { key: 'rating', dir: 'desc' } });
+  saveUi(storage, { view: 'grid', sizes: { list: 80, grid: 260 }, sort: { key: 'rating', dir: 'desc' }, delivery: { fee: 7.5, threshold: 49 }, includeDelivery: false });
+  assert.deepEqual(loadUi(storage), { view: 'grid', sizes: { list: 80, grid: 260 }, sort: { key: 'rating', dir: 'desc' }, delivery: { fee: 7.5, threshold: 49 }, includeDelivery: false });
   mem.set('aps-ui', '{not json');
   assert.deepEqual(loadUi(storage), DEFAULT_UI);
   const throwing = { getItem() { throw new Error('blocked'); }, setItem() { throw new Error('blocked'); } };
@@ -33,4 +33,13 @@ test('ui settings round-trip and survive broken storage', () => {
   mem.set('aps-ui', JSON.stringify({ view: 'grid', sizes: { list: 5, grid: 99999 } }));
   assert.equal(loadUi(storage).sizes.list, VIEWS.list.min);
   assert.equal(loadUi(storage).sizes.grid, VIEWS.grid.max);
+});
+
+test('older saved settings without delivery fields get the delivery defaults', () => {
+  const mem = new Map([['aps-ui', JSON.stringify({ view: 'list', sizes: { list: 48, grid: 200 }, sort: { key: 'price', dir: 'asc' } })]]);
+  const ui = loadUi({ getItem: (k) => mem.get(k) ?? null });
+  assert.deepEqual(ui.delivery, { fee: 8, threshold: 59 });
+  assert.equal(ui.includeDelivery, true);
+  mem.set('aps-ui', JSON.stringify({ delivery: { fee: -3, threshold: 'x' } }));
+  assert.deepEqual(loadUi({ getItem: (k) => mem.get(k) ?? null }).delivery, { fee: 8, threshold: 59 });
 });

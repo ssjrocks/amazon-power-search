@@ -2,6 +2,7 @@ import { collect, newState } from './collector.js';
 import { DOMAINS, makeFetchPage, searchUrl } from './amazon.js';
 import { applyFilters, SORT_KEYS, sortItems, valueScore } from './filter.js';
 import { VIEWS, clampSize, imgUrl, loadUi, saveUi } from './view.js';
+import { deliveryLabel, withDelivery } from './delivery.js';
 import { loadScan, saveScan, scanKey } from './store.js';
 
 const $ = (id) => document.getElementById(id);
@@ -135,9 +136,10 @@ const currentFilters = () => ({
   minReviews: $('f-reviews').value === '' ? null : Number($('f-reviews').value),
   hideSponsored: $('f-sponsored').checked, hideNoPrice: $('f-noprice').checked,
   primeOnly: $('f-prime').checked, freeDelivery: $('f-free').checked,
+  showDigital: $('f-digital').checked, includeDelivery: ui.includeDelivery,
 });
 
-const view = () => sortItems(applyFilters([...items.values()], currentFilters()), ui.sort.key, ui.sort.dir);
+const view = () => sortItems(applyFilters(withDelivery([...items.values()], ui.delivery), currentFilters()), ui.sort.key, ui.sort.dir);
 const fmt = (n) => (n == null ? '' : n.toLocaleString());
 const money = (n) => (n == null ? '' : n.toFixed(2));
 const unitText = (it) => (it.unitPrice != null ? `${money(it.unitPrice)}/${it.unit ?? ''}` : '');
@@ -186,12 +188,19 @@ function renderList(rows) {
     cell(it.brand ?? '', 'muted');
     const pc = cell(money(it.price), 'num');
     if (it.listPrice && it.listPrice > (it.price ?? 0)) pc.append(el('span', 'was', money(it.listPrice)));
+    const tc = cell(money(it.total), 'num total');
+    if (it.deliveryNote === 'est') tc.title = `${money(it.price)} + ${money(it.deliveryCost)} estimated delivery`;
     cell(unitText(it), 'num');
     cell(it.rating ?? '', 'num');
     cell(fmt(it.reviews), 'num');
     cell(fmt(it.bought), 'num');
     const d = cell('', 'deliv');
-    if (it.delivery) d.append(el('div', it.deliveryFee === 0 ? 'clamp2 free' : 'clamp2', it.delivery));
+    const label = deliveryLabel(it, ui.delivery);
+    if (label) {
+      const free = it.deliveryCost === 0;
+      d.append(el('div', `fee${free ? ' free' : ''}${it.deliveryNote === 'est' ? ' est' : ''}`, label));
+    }
+    if (it.delivery) d.append(el('div', 'orig clamp2', it.delivery));
     const v = valueScore(it);
     cell(v == null ? '' : v.toFixed(2), 'num');
   }
@@ -212,6 +221,10 @@ function renderGrid(rows) {
     if (it.listPrice && it.listPrice > (it.price ?? 0)) price.append(el('span', 'was', money(it.listPrice)));
     if (it.unitPrice != null) price.append(el('span', 'muted', `  ${unitText(it)}`));
     card.append(price);
+    if (it.total != null) {
+      const label = deliveryLabel(it, ui.delivery);
+      card.append(el('div', 'total', `${money(it.total)} delivered${label && it.deliveryCost ? ` (${label.replace('+', '')} delivery)` : ''}${it.deliveryCost === 0 ? ' (free delivery)' : ''}`));
+    }
     const rate = [it.rating != null ? `${it.rating} ★` : null, it.reviews != null ? `(${fmt(it.reviews)})` : null,
       it.bought != null ? `${fmt(it.bought)}+ bought` : null].filter(Boolean).join(' ');
     if (rate) card.append(el('div', 'rate', rate));
@@ -277,14 +290,27 @@ $('size').addEventListener('input', () => {
 // re-render on release so the sharper image size is requested
 $('size').addEventListener('change', () => { save(); render(); });
 
+function applyDelivery() {
+  $('d-fee').value = ui.delivery.fee;
+  $('d-threshold').value = ui.delivery.threshold;
+  $('d-include').checked = ui.includeDelivery;
+}
+for (const id of ['d-fee', 'd-threshold']) {
+  $(id).addEventListener('input', () => {
+    ui.delivery = { fee: Number($('d-fee').value) || 0, threshold: Number($('d-threshold').value) || 0 };
+    save(); render();
+  });
+}
+$('d-include').addEventListener('change', () => { ui.includeDelivery = $('d-include').checked; save(); render(); });
+
 $('more').addEventListener('click', () => { shown += ui.view === 'grid' ? GRID_PAGE : PAGE; render(); });
-for (const id of ['f-include', 'f-exclude', 'f-min', 'f-max', 'f-rating', 'f-reviews', 'f-sponsored', 'f-noprice', 'f-prime', 'f-free']) {
+for (const id of ['f-include', 'f-exclude', 'f-min', 'f-max', 'f-rating', 'f-reviews', 'f-sponsored', 'f-noprice', 'f-prime', 'f-free', 'f-digital']) {
   $(id).addEventListener('input', () => { shown = ui.view === 'grid' ? GRID_PAGE : PAGE; render(); });
 }
 
 $('csv').addEventListener('click', () => {
   const cols = ['asin', 'title', 'brand', 'price', 'listPrice', 'unitPrice', 'unit', 'rating', 'reviews', 'bought',
-    'delivery', 'deliveryFee', 'badge', 'prime', 'sponsored'];
+    'delivery', 'deliveryCost', 'deliveryNote', 'total', 'format', 'badge', 'prime', 'sponsored', 'digital'];
   const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
   const csv = [cols.join(','), ...view().map((i) => cols.map((c) => esc(i[c])).join(','))].join('\n');
   const a = document.createElement('a');
@@ -294,4 +320,5 @@ $('csv').addEventListener('click', () => {
 });
 
 applyView();
+applyDelivery();
 markSort();

@@ -21,7 +21,15 @@ export function imgUrl(src, px, dpr = 1) {
   return src.replace(/\._AC_UL\d+_\./, `._AC_UL${n}_.`);
 }
 
-export const DEFAULT_UI = { view: 'list', sizes: { list: VIEWS.list.def, grid: VIEWS.grid.def }, sort: { key: 'price', dir: 'asc' } };
+export const DEFAULT_UI = {
+  view: 'list',
+  sizes: { list: VIEWS.list.def, grid: VIEWS.grid.def },
+  sort: { key: 'total', dir: 'asc' },
+  delivery: { fee: 8, threshold: 59 },   // what to charge when Amazon doesn't list a fee
+  includeDelivery: true,                 // price range filter applies to price + delivery
+};
+
+const money = (v, def) => (Number.isFinite(Number(v)) && Number(v) >= 0 ? Number(v) : def);
 
 // Per-viewer convenience only: any storage failure just means defaults.
 export function loadUi(storage) {
@@ -32,7 +40,9 @@ export function loadUi(storage) {
     return {
       view,
       sizes: { list: clampSize('list', raw.sizes?.list), grid: clampSize('grid', raw.sizes?.grid) },
-      sort: { key: typeof raw.sort?.key === 'string' ? raw.sort.key : 'price', dir: raw.sort?.dir === 'desc' ? 'desc' : 'asc' },
+      sort: { key: typeof raw.sort?.key === 'string' ? raw.sort.key : 'total', dir: raw.sort?.dir === 'desc' ? 'desc' : 'asc' },
+      delivery: { fee: money(raw.delivery?.fee, DEFAULT_UI.delivery.fee), threshold: money(raw.delivery?.threshold, DEFAULT_UI.delivery.threshold) },
+      includeDelivery: raw.includeDelivery !== false,
     };
   } catch {
     return structuredClone(DEFAULT_UI);
