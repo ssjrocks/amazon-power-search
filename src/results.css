@@ -56,5 +56,15 @@ th[aria-sort="descending"]::after { content: " \25BC"; font-size: 10px; }
 .card .brand, .card .rate, .card .deliv { font-size: 12px; color: var(--muted); }
 .card .title { color: var(--fg); }
 
-@media (max-width: 1000px) { th:nth-child(5), td:nth-child(5), th:nth-child(8), td:nth-child(8), th:nth-child(10), td:nth-child(10) { display: none; } }
-@media (max-width: 700px) { th:nth-child(3), td:nth-child(3), th:nth-child(9), td:nth-child(9) { display: none; } }
+@media (max-width: 1000px) { th:nth-child(6), td:nth-child(6), th:nth-child(9), td:nth-child(9), th:nth-child(11), td:nth-child(11) { display: none; } }
+@media (max-width: 700px) { th:nth-child(3), td:nth-child(3), th:nth-child(10), td:nth-child(10) { display: none; } }
+#delivery-settings { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; margin-bottom: 6px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 6px; }
+#delivery-settings input[type=number] { width: 70px; }
+td.deliv .fee { font-weight: 600; }
+td.deliv .est { font-style: italic; }
+td.deliv .orig { color: var(--muted); font-size: 11px; }
+td.total { font-weight: 600; }
+.card .total { font-size: 12px; }
+
+/* an author display rule must not defeat the hidden attribute */
+[hidden] { display: none !important; }

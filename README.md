@@ -24,6 +24,12 @@ price filters change which products you see. Measured on amazon.com.au (2026-10-
 - `src/filter.js` filters (words, price, rating, reviews, Prime, sponsored, free delivery) and sorts (price,
   unit price normalised per 100 g / 100 ml, rating adjusted for review count, rating per dollar, reviews,
   bought last month, delivery cost, brand, title).
+- Delivery: Amazon's list prices leave delivery out. Items with a listed charge ("$6.53 delivery") use it; items
+  that are free only on a first order, free over a spend, or have no message are charged a standard fee
+  (default $8, editable) unless the price reaches the free-delivery threshold (default $59, editable). The
+  **Total** column is price + delivery for a one-item order, and the price range can apply to it.
+- Kindle books and audiobooks (priced $0.00 for Kindle Unlimited / "Free with Audible trial") are hidden
+  unless "Show Kindle & audiobooks" is ticked.
 - Two views: **List** (compact rows with brand, delivery, badges, low-stock) and **Grid** (cards). Each view has
   its own image-size slider; the choice of view, sizes and sort is remembered. Click a column header or use
   the Sort menu to sort.

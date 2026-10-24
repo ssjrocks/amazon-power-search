@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
-import { parseSearchPage, parseTotal } from '../src/parser.js';
+import { parseSearchPage, parseTotal, parseDelivery } from '../src/parser.js';
+import { withDelivery, deliveryLabel, deliveryCost } from '../src/delivery.js';
 import { applyFilters, sortItems, bayes, normaliseUnit } from '../src/filter.js';
 
 // Synthetic fixture modelled on amazon.com.au markup observed 2026-10-24.
@@ -138,7 +139,8 @@ test('real amazon.com.au grocery cards: unit price, list price, delivery, badge,
   assert.equal(a.unit, '100 g');
   assert.equal(a.listPrice, null);
   assert.equal(a.delivery, 'FREE delivery Thu, 5 Nov on your first order');
-  assert.equal(a.deliveryFee, 0);
+  assert.equal(a.deliveryKind, 'conditional'); // first-order promo, not free for existing customers
+  assert.equal(a.deliveryFee, null);
   assert.equal(a.badge, "Amazon's Choice");
   assert.equal(a.lowStock, 4);
   assert.equal(a.bought, 600);
@@ -147,6 +149,7 @@ test('real amazon.com.au grocery cards: unit price, list price, delivery, badge,
   assert.equal(b.listPrice, 24.99);
   assert.equal(b.unitPrice, 4);
   assert.equal(b.deliveryFee, 6.53);
+  assert.equal(b.deliveryKind, 'fee');
   assert.equal(b.badge, null);
 });
 
@@ -166,10 +169,71 @@ test('unit prices normalise so per-100 g and per-kg compare', () => {
   assert.equal(sortItems(items, 'unit').map((i) => i.asin).join(''), 'cabd'); // 2.50, 3.00, 3.65, none last
 });
 
-test('free delivery filter and delivery-cost sort', () => {
-  const items = [
-    { asin: 'a', deliveryFee: 6.53 }, { asin: 'b', deliveryFee: 0 }, { asin: 'c', deliveryFee: null }, { asin: 'd', deliveryFee: 0 },
-  ];
+test('free delivery filter and delivery-cost sort use the delivered cost', () => {
+  const items = withDelivery([
+    { asin: 'a', price: 20, deliveryKind: 'fee', deliveryFee: 6.53 },
+    { asin: 'b', price: 20, deliveryKind: 'free', deliveryFee: 0 },
+    { asin: 'c', price: 20, deliveryKind: 'unknown' },
+    { asin: 'd', price: 80, deliveryKind: 'unknown' },
+  ]);
   assert.equal(applyFilters(items, { freeDelivery: true }).map((i) => i.asin).join(''), 'bd');
-  assert.equal(sortItems(items, 'delivery').map((i) => i.asin).join(''), 'bdac');
+  assert.equal(sortItems(items, 'delivery').map((i) => i.asin).join(''), 'bdac'); // 0, 0, 6.53, 8
+});
+
+
+test('Kindle and audiobook prices are flagged digital by the format on the price shown', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const html = await readFile(new URL('./fixtures/books.html', import.meta.url), 'utf8');
+  const [kindle, audio, hardcover] = parseSearchPage(doc(html), html).cards;
+  assert.deepEqual([kindle.format, kindle.digital, kindle.price], ['Kindle Edition', true, 0]);
+  assert.deepEqual([audio.format, audio.digital, audio.price], ['Audiobook', true, 0]);
+  // a hardcover that merely lists a Kindle edition keeps its real price
+  assert.deepEqual([hardcover.format, hardcover.digital, hardcover.price, hardcover.listPrice], ['Hardcover', false, 46.7, 65]);
+  const items = withDelivery([kindle, audio, hardcover]);
+  assert.equal(applyFilters(items, {}).map((i) => i.asin).join(), '1408845644');
+  assert.equal(applyFilters(items, { showDigital: true }).length, 3);
+});
+
+test('a deal badge before the format does not hide that the price is digital', () => {
+  const html = '<html><body><div data-asin="B1" data-component-type="s-search-result"><a><h2 aria-label="Some novel"><span>Some novel</span></h2></a><div class="s-price-instructions-style"><div class="a-row"><span>Save 29%</span> <a class="a-text-bold">Kindle Edition</a></div><div class="a-row"><span class="aok-offscreen">Price, product page</span><span class="a-price"><span class="a-offscreen">$3.99</span></span></div></div></div></body></html>';
+  const [c] = parseSearchPage(doc(html), html).cards;
+  assert.deepEqual([c.format, c.digital, c.price], ['Save 29% Kindle Edition', true, 3.99]);
+});
+
+test('delivery messages are classified', () => {
+  assert.deepEqual(parseDelivery('FREE delivery Thu, 5 Nov on your first order'), { kind: 'conditional', fee: null, threshold: null });
+  assert.deepEqual(parseDelivery('$6.53 delivery 11 - 16 Nov'), { kind: 'fee', fee: 6.53, threshold: null });
+  assert.deepEqual(parseDelivery('FREE delivery 29 Oct - 2 Nov'), { kind: 'free', fee: 0, threshold: null });
+  assert.deepEqual(parseDelivery('FREE delivery Thu, 5 Nov on $59 of items shipped by Amazon'), { kind: 'conditional', fee: null, threshold: 59 });
+  assert.deepEqual(parseDelivery('Delivery Thu, 5 Nov'), { kind: 'unknown', fee: null, threshold: null });
+  assert.deepEqual(parseDelivery(null), { kind: 'unknown', fee: null, threshold: null });
+});
+
+test('delivered cost: listed fee, free, and standard fee below the free-delivery threshold', () => {
+  const s = { fee: 8, threshold: 59 };
+  const cost = (it) => deliveryCost(it, s);
+  assert.deepEqual(cost({ price: 30, deliveryKind: 'fee', deliveryFee: 6.53 }), { cost: 6.53, note: 'listed' });
+  assert.deepEqual(cost({ price: 120, deliveryKind: 'fee', deliveryFee: 15.08 }), { cost: 15.08, note: 'listed' }); // listed fee always applies
+  assert.deepEqual(cost({ price: 13.99, deliveryKind: 'free', deliveryFee: 0 }), { cost: 0, note: 'free' });
+  assert.deepEqual(cost({ price: 14.43, deliveryKind: 'conditional' }), { cost: 8, note: 'est' });  // first-order promo ignored
+  assert.deepEqual(cost({ price: 70, deliveryKind: 'conditional' }), { cost: 0, note: 'over' });
+  assert.deepEqual(cost({ price: 40, deliveryKind: 'conditional', deliveryThreshold: 35 }), { cost: 0, note: 'over' }); // message's own threshold wins
+  assert.deepEqual(cost({ price: 20, deliveryKind: 'unknown' }), { cost: 8, note: 'est' });
+  assert.deepEqual(cost({ price: null, deliveryKind: 'unknown' }), { cost: null, note: 'none' });
+  assert.deepEqual(deliveryCost({ price: 20, deliveryKind: 'unknown' }, { fee: 0, threshold: 59 }), { cost: 0, note: 'est' }); // Prime: set the fee to 0
+  const [x] = withDelivery([{ price: 14.43, deliveryKind: 'conditional' }], s);
+  assert.equal(x.total, 22.43);
+  assert.equal(deliveryLabel(x, s), '+$8.00 est.');
+  assert.equal(deliveryLabel({ deliveryNote: 'over', deliveryCost: 0 }, s), 'free over $59');
+});
+
+test('price range can apply to price plus delivery', () => {
+  const items = withDelivery([
+    { asin: 'a', price: 14.43, deliveryKind: 'conditional' },   // total 22.43
+    { asin: 'b', price: 20, deliveryKind: 'free', deliveryFee: 0 }, // total 20
+  ]);
+  assert.equal(applyFilters(items, { maxPrice: 21, includeDelivery: true }).map((i) => i.asin).join(), 'b');
+  assert.equal(applyFilters(items, { maxPrice: 21, includeDelivery: false }).map((i) => i.asin).join(), 'a,b');
+  assert.equal(sortItems(items, 'total').map((i) => i.asin).join(), 'b,a');
+  assert.equal(sortItems(items, 'price').map((i) => i.asin).join(), 'a,b');
 });

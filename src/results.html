@@ -32,6 +32,14 @@
   <label><input id="f-noprice" type="checkbox" checked> Hide no price</label>
   <label><input id="f-prime" type="checkbox"> Prime only</label>
   <label><input id="f-free" type="checkbox"> Free delivery</label>
+  <label title="Kindle books and audiobooks show $0.00 (Kindle Unlimited, Audible trial)"><input id="f-digital" type="checkbox"> Show Kindle &amp; audiobooks</label>
+</section>
+
+<section id="delivery-settings" title="Amazon's prices leave delivery out. Items with a listed delivery charge use it; free-on-first-order or no-message items are charged the standard fee unless they reach the free-delivery threshold.">
+  <strong>Delivery</strong>
+  <label>Standard fee $ <input id="d-fee" type="number" step="0.01" min="0"></label>
+  <label>Free over $ <input id="d-threshold" type="number" step="1" min="0"></label>
+  <label><input id="d-include" type="checkbox"> Price range includes delivery</label>
 </section>
 
 <section id="viewbar">
@@ -42,6 +50,7 @@
   <label class="slider">Image size <input id="size" type="range"> <output id="size-out"></output></label>
   <label>Sort
     <select id="sort">
+      <option value="total">Total (price + delivery)</option>
       <option value="price">Price</option>
       <option value="unit">Unit price</option>
       <option value="value">Value (rating per dollar)</option>
@@ -65,11 +74,12 @@
     <th data-sort="title">Product</th>
     <th data-sort="brand">Brand</th>
     <th class="num" data-sort="price">Price</th>
+    <th class="num" data-sort="total" title="Price plus delivery, if this were the only item in your cart">Total</th>
     <th class="num" data-sort="unit" title="Price per 100 g / 100 ml / unit">Unit</th>
     <th class="num" data-sort="rating" title="Rating adjusted for how many reviews it has">Rating</th>
     <th class="num" data-sort="reviews">Reviews</th>
     <th class="num" data-sort="bought">Bought</th>
-    <th data-sort="delivery" title="Sorted by delivery cost">Delivery</th>
+    <th data-sort="delivery" title="Delivery cost (sorts by cost)">Delivery</th>
     <th class="num" data-sort="value" title="Adjusted rating per dollar">Value</th>
   </tr></thead>
   <tbody></tbody>

@@ -13,12 +13,15 @@ export function applyFilters(items, f = {}) {
     const t = (it.title || '').toLowerCase();
     if (f.hideSponsored && it.sponsored) return false;
     if (f.hideNoPrice && it.price == null) return false;
-    if (f.minPrice != null && (it.price == null || it.price < f.minPrice)) return false;
-    if (f.maxPrice != null && (it.price == null || it.price > f.maxPrice)) return false;
+    if (!f.showDigital && it.digital) return false;
+    // With includeDelivery the price range applies to price + delivery (see delivery.js).
+    const p = f.includeDelivery ? (it.total ?? it.price) : it.price;
+    if (f.minPrice != null && (p == null || p < f.minPrice)) return false;
+    if (f.maxPrice != null && (p == null || p > f.maxPrice)) return false;
     if (f.minRating != null && (it.rating == null || it.rating < f.minRating)) return false;
     if (f.minReviews != null && (it.reviews || 0) < f.minReviews) return false;
     if (f.primeOnly && !it.prime) return false;
-    if (f.freeDelivery && it.deliveryFee !== 0) return false;
+    if (f.freeDelivery && it.deliveryCost !== 0) return false;
     if (inc.length && !inc.every((w) => t.includes(w))) return false;
     if (exc.length && exc.some((w) => t.includes(w))) return false;
     return true;
@@ -52,13 +55,14 @@ export const SORT_KEYS = {
   title: { get: (i) => (i.title || '').toLowerCase(), dir: 'asc' },
   brand: { get: (i) => (i.brand || '').toLowerCase() || null, dir: 'asc' },
   price: { get: (i) => i.price, dir: 'asc' },
+  total: { get: (i) => i.total ?? null, dir: 'asc' },      // price + delivery
   unit: { get: unitSortValue, dir: 'asc' },
-  delivery: { get: (i) => i.deliveryFee, dir: 'asc' },
+  delivery: { get: (i) => i.deliveryCost ?? null, dir: 'asc' },
   rating: { get: (i) => bayes(i.rating, i.reviews), dir: 'desc' },
   reviews: { get: (i) => i.reviews, dir: 'desc' },
   bought: { get: (i) => i.bought, dir: 'desc' },
-  // rating quality per dollar
-  value: { get: (i) => (i.price ? bayes(i.rating, i.reviews) / i.price : null), dir: 'desc' },
+  // rating quality per dollar spent (delivery included when known)
+  value: { get: (i) => { const cost = i.total ?? i.price; return cost ? bayes(i.rating, i.reviews) / cost : null; }, dir: 'desc' },
 };
 
 export const valueScore = (i) => SORT_KEYS.value.get(i);

@@ -28,6 +28,25 @@ export function parseTotal(text) {
   return { total: parseInt(m[2].replace(/,/g, ''), 10), over: !!m[1] };
 }
 
+// What Amazon's delivery line says, without deciding what it costs you:
+//   free         unconditional "FREE delivery <date>"
+//   fee          "$6.53 delivery <date>": a separate charge, always shown
+//   conditional  FREE, but only on your first order or above a spend ("on $59 of items")
+//   unknown      no message, or just "Delivery <date>"
+export function parseDelivery(text) {
+  if (!text) return { kind: 'unknown', fee: null, threshold: null };
+  const free = /\bFREE\b/i.test(text);
+  const fee = text.match(/\$\s*([\d,]+(?:\.\d+)?)\s+delivery/i);
+  const threshold = text.match(/\b(?:on|over)\s+\$\s*([\d,]+(?:\.\d+)?)/i);
+  const firstOrder = /\bfirst order\b/i.test(text);
+  if (!free && fee) return { kind: 'fee', fee: parseFloat(fee[1].replace(/,/g, '')), threshold: null };
+  if (free && (firstOrder || threshold)) {
+    return { kind: 'conditional', fee: null, threshold: threshold ? parseFloat(threshold[1].replace(/,/g, '')) : null };
+  }
+  if (free) return { kind: 'free', fee: 0, threshold: null };
+  return { kind: 'unknown', fee: null, threshold: null };
+}
+
 export function parseCard(c) {
   const asin = c.getAttribute('data-asin');
   const text = clean(c.textContent);
@@ -62,9 +81,19 @@ export function parseCard(c) {
   const unitText = unitEl ? clean(unitEl.parentElement.textContent).match(/\/\s*([^)]+?)\s*\)/)?.[1] : null;
   const unitFallback = unitEl ? null : text.match(/\(\s*[^\d()]{0,3}([\d.,]+)\s*\/\s*([^)]+?)\s*\)/);
 
-  const delivery = clean(c.querySelector('.udm-primary-delivery-message')?.textContent) || null;
-  const fee = delivery?.match(/\$\s*([\d.,]+)\s+delivery/i);
+  // Delivery: the first primary message that isn't about international orders.
+  const msgs = [...c.querySelectorAll('.udm-primary-delivery-message')].map((e) => clean(e.textContent)).filter(Boolean);
+  const delivery = msgs.find((m) => !/international/i.test(m)) ?? msgs[0] ?? null;
+  const dv = parseDelivery(delivery);
   const left = text.match(/Only (\d+) left in stock/i);
+
+  // Books and media put the format of the price shown in a bold link above it, so the price block
+  // reads "Kindle Edition Price, product page$11.99" or "Hardcover Price, product page$46.70" (plain
+  // products: just "Price, product page"). Kindle and audiobook prices are digital: $0.00 for Kindle
+  // Unlimited / "Free with Audible trial".
+  const priceBlock = clean(c.querySelector('.s-price-instructions-style')?.textContent);
+  const format = priceBlock.match(/^(.*?)\s*Price, product page/i)?.[1] || null;
+  const digital = !!format && /\b(Kindle|Audiobook|Audible)\b/i.test(format);
 
   return {
     asin,
@@ -80,8 +109,12 @@ export function parseCard(c) {
     unitPrice: unitEl ? num(unitEl.querySelector('.a-offscreen')?.textContent)
       : unitFallback ? parseFloat(unitFallback[1].replace(/,/g, '')) : null,
     unit: unitText ?? (unitFallback ? clean(unitFallback[2]) : null),
+    format,
+    digital,
     delivery,
-    deliveryFee: !delivery ? null : /\bFREE\b/i.test(delivery) ? 0 : fee ? parseFloat(fee[1].replace(/,/g, '')) : null,
+    deliveryFee: dv.fee,
+    deliveryKind: dv.kind,
+    deliveryThreshold: dv.threshold,
     badge: clean(c.querySelector('.a-badge-label-inner')?.textContent) || null,
     lowStock: left ? parseInt(left[1], 10) : null,
     image: c.querySelector('img.s-image')?.getAttribute('src') ?? null,
