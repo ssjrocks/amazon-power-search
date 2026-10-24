@@ -1,0 +1,49 @@
+{
+  "manifest_version": 2,
+  "name": "Amazon Power Search",
+  "version": "0.1.1",
+  "description": "Collects every result an Amazon search will give (past the page cap) and lets you sort and filter them yourself.",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "amazon-power-search@ssjrocks.com",
+      "strict_min_version": "128.0",
+      "update_url": "https://github.com/ssjrocks/amazon-power-search/releases/latest/download/updates.json",
+      "data_collection_permissions": {
+        "required": [
+          "none"
+        ]
+      }
+    }
+  },
+  "permissions": [
+    "storage",
+    "notifications",
+    "*://www.amazon.com.au/*",
+    "*://www.amazon.com/*",
+    "*://www.amazon.co.uk/*",
+    "*://www.amazon.de/*",
+    "*://www.amazon.ca/*"
+  ],
+  "background": {
+    "scripts": [
+      "src/background.js"
+    ]
+  },
+  "browser_action": {
+    "default_title": "Amazon Power Search"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "*://www.amazon.com.au/s*",
+        "*://www.amazon.com/s*",
+        "*://www.amazon.co.uk/s*",
+        "*://www.amazon.de/s*",
+        "*://www.amazon.ca/s*"
+      ],
+      "js": [
+        "src/content.js"
+      ]
+    }
+  ]
+}
