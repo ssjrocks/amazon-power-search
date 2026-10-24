@@ -40,10 +40,37 @@ Open an Amazon search page and press the "Power search" button, or click the too
 Parser fixtures in `test/` are synthetic, modelled on markup seen on 2026-10-24. If Amazon changes its
 markup, `src/parser.js` is the only file that should need changes.
 
+## Release and auto-update
+
+Releases are signed by Mozilla on the free "unlisted" channel (no store listing, no human review) and
+published as GitHub releases. Firefox finds new versions through `update_url` in `manifest.json`, which
+points at the `updates.json` attached to the latest release, and checks about once a day.
+
+One-time: create an API key at https://addons.mozilla.org/en-US/developers/addon/api/key/ and put it in
+`~/.config/amazon-power-search/amo.env` (mode 600, outside the repo):
+
+```
+AMO_JWT_ISSUER=user:...
+AMO_JWT_SECRET=...
+```
+
+Then, from a clean, up-to-date `main`:
+
+```bash
+npm run release -- patch      # or minor / major; "none" releases the version already in manifest.json
+```
+
+It bumps the version, runs tests and lint, signs, commits and tags, publishes the release, then fetches
+`updates.json` and the `.xpi` back from GitHub and checks the hash. Mozilla refuses to sign a version
+twice, so every release needs a new version number.
+
+First install: open the `.xpi` from the latest release in Firefox. After that it updates itself
+(about:addons -> gear menu -> Check for Updates forces a check).
+
 ## Status
 
-Scaffold. Not yet done: splitting crowded bands by other facets (brand, rating, Prime), signed release
-builds and the GitHub-release update manifest (`update_url` is already set in `manifest.json`).
+Working. Not yet done: splitting crowded bands by other facets (brand, rating, Prime) and checking the
+Prime / unit-price / bought-last-month selectors against real markup.
 
 Amazon's conditions of use restrict automated access. This tool is for personal use at a low request
 rate; use it at your own risk.
