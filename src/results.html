@@ -31,12 +31,47 @@
   <label><input id="f-sponsored" type="checkbox" checked> Hide sponsored</label>
   <label><input id="f-noprice" type="checkbox" checked> Hide no price</label>
   <label><input id="f-prime" type="checkbox"> Prime only</label>
-  <button id="csv" type="button">Export CSV</button>
+  <label><input id="f-free" type="checkbox"> Free delivery</label>
 </section>
 
-<div id="count"></div>
+<section id="viewbar">
+  <div class="seg" role="group" aria-label="View">
+    <button type="button" id="v-list" data-view="list">List</button>
+    <button type="button" id="v-grid" data-view="grid">Grid</button>
+  </div>
+  <label class="slider">Image size <input id="size" type="range"> <output id="size-out"></output></label>
+  <label>Sort
+    <select id="sort">
+      <option value="price">Price</option>
+      <option value="unit">Unit price</option>
+      <option value="value">Value (rating per dollar)</option>
+      <option value="rating">Rating (adjusted for review count)</option>
+      <option value="reviews">Reviews</option>
+      <option value="bought">Bought last month</option>
+      <option value="delivery">Delivery cost</option>
+      <option value="brand">Brand</option>
+      <option value="title">Title</option>
+    </select>
+  </label>
+  <button id="dir" type="button" title="Reverse the sort order"></button>
+  <button id="csv" type="button">Export CSV</button>
+  <span id="count"></span>
+</section>
+
+<div id="grid" hidden></div>
 <table id="results">
-  <thead><tr><th></th><th data-sort="title">Product</th><th class="num" data-sort="price">Price</th><th class="num" data-sort="unit">Unit</th><th class="num" data-sort="rating" title="Rating adjusted for how many reviews it has">Rating</th><th class="num" data-sort="reviews">Reviews</th><th class="num" data-sort="bought">Bought</th><th class="num" data-sort="value" title="Adjusted rating per dollar">Value</th></tr></thead>
+  <thead><tr>
+    <th class="img"></th>
+    <th data-sort="title">Product</th>
+    <th data-sort="brand">Brand</th>
+    <th class="num" data-sort="price">Price</th>
+    <th class="num" data-sort="unit" title="Price per 100 g / 100 ml / unit">Unit</th>
+    <th class="num" data-sort="rating" title="Rating adjusted for how many reviews it has">Rating</th>
+    <th class="num" data-sort="reviews">Reviews</th>
+    <th class="num" data-sort="bought">Bought</th>
+    <th data-sort="delivery" title="Sorted by delivery cost">Delivery</th>
+    <th class="num" data-sort="value" title="Adjusted rating per dollar">Value</th>
+  </tr></thead>
   <tbody></tbody>
 </table>
 <button id="more" hidden>Show more</button>

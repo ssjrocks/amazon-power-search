@@ -1,16 +1,18 @@
 import { collect, newState } from './collector.js';
 import { DOMAINS, makeFetchPage, searchUrl } from './amazon.js';
 import { applyFilters, SORT_KEYS, sortItems, valueScore } from './filter.js';
+import { VIEWS, clampSize, imgUrl, loadUi, saveUi } from './view.js';
 import { loadScan, saveScan, scanKey } from './store.js';
 
 const $ = (id) => document.getElementById(id);
 const PAGE = 200;
+const GRID_PAGE = 120;
 
 let items = new Map();     // asin -> item
 let shown = PAGE;
 let run = null;            // { abort, domain, query, state } while scanning
 let headline = null;
-let sort = { key: 'price', dir: 'asc' };
+let ui = loadUi(localStorage);   // { view, sizes: { list, grid }, sort }
 
 // ---- form setup ----------------------------------------------------------
 for (const d of DOMAINS) $('domain').add(new Option(`amazon.${d}`, d));
@@ -124,78 +126,165 @@ function status(s, label) {
   p.value = Math.min(p.max, s.requests - (run?.startReq ?? s.requests));
 }
 
-// ---- table ---------------------------------------------------------------
+// ---- filters, sort, view ---------------------------------------------------
 const currentFilters = () => ({
   include: $('f-include').value, exclude: $('f-exclude').value,
   minPrice: $('f-min').value === '' ? null : Number($('f-min').value),
   maxPrice: $('f-max').value === '' ? null : Number($('f-max').value),
   minRating: $('f-rating').value === '' ? null : Number($('f-rating').value),
   minReviews: $('f-reviews').value === '' ? null : Number($('f-reviews').value),
-  hideSponsored: $('f-sponsored').checked, hideNoPrice: $('f-noprice').checked, primeOnly: $('f-prime').checked,
+  hideSponsored: $('f-sponsored').checked, hideNoPrice: $('f-noprice').checked,
+  primeOnly: $('f-prime').checked, freeDelivery: $('f-free').checked,
 });
 
-const view = () => sortItems(applyFilters([...items.values()], currentFilters()), sort.key, sort.dir);
+const view = () => sortItems(applyFilters([...items.values()], currentFilters()), ui.sort.key, ui.sort.dir);
 const fmt = (n) => (n == null ? '' : n.toLocaleString());
 const money = (n) => (n == null ? '' : n.toFixed(2));
+const unitText = (it) => (it.unitPrice != null ? `${money(it.unitPrice)}/${it.unit ?? ''}` : '');
+const save = () => saveUi(localStorage, ui);
 
-function cell(tr, text, cls) {
-  const td = tr.insertCell(); td.textContent = text; if (cls) td.className = cls; return td;
+function el(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text != null) e.textContent = text;
+  return e;
+}
+const tag = (text, cls = '') => el('span', `tag ${cls}`.trim(), text);
+const link = (it, cls, child) => {
+  const a = el('a', cls);
+  a.href = `https://www.amazon.${$('domain').value}/dp/${it.asin}`; a.target = '_blank'; a.rel = 'noopener';
+  if (typeof child === 'string') a.textContent = child; else if (child) a.append(child);
+  return a;
+};
+function image(it, px) {
+  const img = el('img');
+  img.loading = 'lazy'; img.alt = '';
+  if (it.image) img.src = imgUrl(it.image, px, window.devicePixelRatio || 1);
+  return img;
+}
+function itemTags(it) {
+  const tags = [];
+  if (it.badge) tags.push(tag(it.badge, 'good'));
+  if (it.sponsored) tags.push(tag('sponsored'));
+  if (it.prime) tags.push(tag('prime', 'good'));
+  if (it.lowStock) tags.push(tag(`only ${it.lowStock} left`, 'warn'));
+  return tags;
+}
+
+function renderList(rows) {
+  const body = $('results').tBodies[0];
+  body.textContent = '';
+  const px = ui.sizes.list;
+  for (const it of rows.slice(0, shown)) {
+    const tr = body.insertRow();
+    const img = tr.insertCell(); img.className = 'img'; img.append(link(it, '', image(it, px)));
+    const t = tr.insertCell(); t.className = 'title';
+    t.append(link(it, 'clamp2', it.title || it.asin));
+    const tags = itemTags(it);
+    if (tags.length) { const row = el('div'); row.append(...tags); t.append(row); }
+    const cell = (text, cls) => { const td = tr.insertCell(); td.textContent = text; if (cls) td.className = cls; return td; };
+    cell(it.brand ?? '', 'muted');
+    const pc = cell(money(it.price), 'num');
+    if (it.listPrice && it.listPrice > (it.price ?? 0)) pc.append(el('span', 'was', money(it.listPrice)));
+    cell(unitText(it), 'num');
+    cell(it.rating ?? '', 'num');
+    cell(fmt(it.reviews), 'num');
+    cell(fmt(it.bought), 'num');
+    const d = cell('', 'deliv');
+    if (it.delivery) d.append(el('div', it.deliveryFee === 0 ? 'clamp2 free' : 'clamp2', it.delivery));
+    const v = valueScore(it);
+    cell(v == null ? '' : v.toFixed(2), 'num');
+  }
+}
+
+function renderGrid(rows) {
+  const grid = $('grid');
+  grid.textContent = '';
+  const px = ui.sizes.grid;
+  for (const it of rows.slice(0, shown)) {
+    const card = el('article', 'card');
+    card.append(link(it, 'thumb', image(it, px)));
+    const tags = el('div', 'tags'); tags.append(...itemTags(it)); card.append(tags);
+    card.append(link(it, 'title clamp3', it.title || it.asin));
+    if (it.brand) card.append(el('div', 'brand', it.brand));
+    const price = el('div');
+    price.append(el('span', 'price', it.price != null ? money(it.price) : 'no price'));
+    if (it.listPrice && it.listPrice > (it.price ?? 0)) price.append(el('span', 'was', money(it.listPrice)));
+    if (it.unitPrice != null) price.append(el('span', 'muted', `  ${unitText(it)}`));
+    card.append(price);
+    const rate = [it.rating != null ? `${it.rating} ★` : null, it.reviews != null ? `(${fmt(it.reviews)})` : null,
+      it.bought != null ? `${fmt(it.bought)}+ bought` : null].filter(Boolean).join(' ');
+    if (rate) card.append(el('div', 'rate', rate));
+    if (it.delivery) card.append(el('div', 'deliv clamp2', it.delivery));
+    grid.append(card);
+  }
 }
 
 function render() {
   const rows = view();
   $('count').textContent = `${rows.length.toLocaleString()} shown of ${items.size.toLocaleString()} collected`;
-  const body = $('results').tBodies[0];
-  body.textContent = '';
-  const domain = $('domain').value;
-  for (const it of rows.slice(0, shown)) {
-    const tr = body.insertRow();
-    const img = document.createElement('img'); img.loading = 'lazy'; if (it.image) img.src = it.image;
-    tr.insertCell().append(img);
-    const td = tr.insertCell();
-    const a = document.createElement('a');
-    a.href = `https://www.amazon.${domain}/dp/${it.asin}`; a.target = '_blank'; a.rel = 'noopener';
-    a.textContent = it.title || it.asin;
-    td.append(a);
-    if (it.sponsored) { const t = document.createElement('span'); t.className = 'tag'; t.textContent = 'sponsored'; td.append(t); }
-    if (it.prime) { const t = document.createElement('span'); t.className = 'tag'; t.textContent = 'prime'; td.append(t); }
-    cell(tr, money(it.price), 'num');
-    cell(tr, it.unitPrice != null ? `${it.unitPrice}/${it.unit}` : '', 'num');
-    cell(tr, it.rating ?? '', 'num');
-    cell(tr, fmt(it.reviews), 'num');
-    cell(tr, fmt(it.bought), 'num');
-    const v = valueScore(it);
-    cell(tr, v == null ? '' : v.toFixed(2), 'num');
-  }
+  const isGrid = ui.view === 'grid';
+  $('grid').hidden = !isGrid;
+  $('results').hidden = isGrid;
+  if (isGrid) renderGrid(rows); else renderList(rows);
   $('more').hidden = rows.length <= shown;
+}
+
+// image-size slider: one remembered size per view
+function applySize() {
+  const v = VIEWS[ui.view], size = ui.sizes[ui.view];
+  const slider = $('size');
+  slider.min = v.min; slider.max = v.max; slider.step = v.step; slider.value = size;
+  $('size-out').textContent = `${size}px`;
+  document.documentElement.style.setProperty('--list-img', `${ui.sizes.list}px`);
+  document.documentElement.style.setProperty('--card-w', `${ui.sizes.grid}px`);
+}
+
+function applyView() {
+  for (const b of document.querySelectorAll('.seg button')) b.setAttribute('aria-pressed', String(b.dataset.view === ui.view));
+  shown = ui.view === 'grid' ? GRID_PAGE : PAGE;
+  applySize();
 }
 
 function markSort() {
   for (const th of document.querySelectorAll('th[data-sort]')) {
-    if (th.dataset.sort === sort.key) th.setAttribute('aria-sort', sort.dir === 'asc' ? 'ascending' : 'descending');
+    if (th.dataset.sort === ui.sort.key) th.setAttribute('aria-sort', ui.sort.dir === 'asc' ? 'ascending' : 'descending');
     else th.removeAttribute('aria-sort');
   }
+  $('sort').value = SORT_KEYS[ui.sort.key] ? ui.sort.key : 'price';
+  $('dir').textContent = ui.sort.dir === 'asc' ? '▲ Low to high' : '▼ High to low';
 }
-for (const th of document.querySelectorAll('th[data-sort]')) {
-  th.addEventListener('click', () => {
-    const key = th.dataset.sort;
-    sort = key === sort.key
-      ? { key, dir: sort.dir === 'asc' ? 'desc' : 'asc' }
-      : { key, dir: SORT_KEYS[key].dir };
-    shown = PAGE;
-    markSort();
-    render();
-  });
-}
-markSort();
 
-$('more').addEventListener('click', () => { shown += PAGE; render(); });
-for (const id of ['f-include', 'f-exclude', 'f-min', 'f-max', 'f-rating', 'f-reviews', 'f-sponsored', 'f-noprice', 'f-prime']) {
-  $(id).addEventListener('input', () => { shown = PAGE; render(); });
+function setSort(key, dir) {
+  ui.sort = { key, dir: dir ?? (key === ui.sort.key ? (ui.sort.dir === 'asc' ? 'desc' : 'asc') : SORT_KEYS[key].dir) };
+  shown = ui.view === 'grid' ? GRID_PAGE : PAGE;
+  save(); markSort(); render();
+}
+
+for (const th of document.querySelectorAll('th[data-sort]')) th.addEventListener('click', () => setSort(th.dataset.sort));
+$('sort').addEventListener('change', () => setSort($('sort').value, SORT_KEYS[$('sort').value].dir));
+$('dir').addEventListener('click', () => setSort(ui.sort.key, ui.sort.dir === 'asc' ? 'desc' : 'asc'));
+
+for (const b of document.querySelectorAll('.seg button')) {
+  b.addEventListener('click', () => { ui.view = b.dataset.view; save(); applyView(); render(); });
+}
+$('size').addEventListener('input', () => {
+  ui.sizes[ui.view] = clampSize(ui.view, $('size').value);
+  $('size-out').textContent = `${ui.sizes[ui.view]}px`;
+  document.documentElement.style.setProperty('--list-img', `${ui.sizes.list}px`);
+  document.documentElement.style.setProperty('--card-w', `${ui.sizes.grid}px`);
+});
+// re-render on release so the sharper image size is requested
+$('size').addEventListener('change', () => { save(); render(); });
+
+$('more').addEventListener('click', () => { shown += ui.view === 'grid' ? GRID_PAGE : PAGE; render(); });
+for (const id of ['f-include', 'f-exclude', 'f-min', 'f-max', 'f-rating', 'f-reviews', 'f-sponsored', 'f-noprice', 'f-prime', 'f-free']) {
+  $(id).addEventListener('input', () => { shown = ui.view === 'grid' ? GRID_PAGE : PAGE; render(); });
 }
 
 $('csv').addEventListener('click', () => {
-  const cols = ['asin', 'title', 'price', 'unitPrice', 'unit', 'rating', 'reviews', 'bought', 'prime', 'sponsored'];
+  const cols = ['asin', 'title', 'brand', 'price', 'listPrice', 'unitPrice', 'unit', 'rating', 'reviews', 'bought',
+    'delivery', 'deliveryFee', 'badge', 'prime', 'sponsored'];
   const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
   const csv = [cols.join(','), ...view().map((i) => cols.map((c) => esc(i[c])).join(','))].join('\n');
   const a = document.createElement('a');
@@ -203,3 +292,6 @@ $('csv').addEventListener('click', () => {
   a.download = 'amazon-power-search.csv';
   a.click();
 });
+
+applyView();
+markSort();

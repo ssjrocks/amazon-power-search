@@ -45,7 +45,9 @@ export function parseCard(c) {
     /^Sponsored Ad/i.test(clean(h2?.textContent));
 
   const price = num(c.querySelector('.a-price:not(.a-text-price) .a-offscreen')?.textContent);
-  const listPrice = num(c.querySelector('.a-price.a-text-price .a-offscreen')?.textContent);
+  // Both the struck-through list price and the per-unit price use `a-text-price`;
+  // only the list price is marked data-a-strike.
+  const listPrice = num(c.querySelector('.a-price.a-text-price[data-a-strike="true"] .a-offscreen')?.textContent);
 
   const rating = num(c.querySelector('[aria-label*="out of 5 stars"]')?.getAttribute('aria-label') ||
     c.querySelector('.a-icon-alt')?.textContent);
@@ -54,7 +56,15 @@ export function parseCard(c) {
     abbrev(c.querySelector('a[href*="customerReviews"] span, [data-csa-c-func-deps*="review"] span')?.textContent);
 
   const bought = text.match(/([\d.,]+\s*[KM]?\+?)\s+bought in past month/i)?.[1] ?? null;
-  const unit = text.match(/\(\s*[^\d()]{0,3}([\d.,]+)\s*\/\s*([^)]+?)\s*\)/);
+  // Per-unit price: "(<$3.65>/100 g)", where the price is its own a-text-price node.
+  const unitEl = [...c.querySelectorAll('.a-price.a-text-price:not([data-a-strike="true"])')]
+    .find((e) => /\/\s*[^)]+\)/.test(e.parentElement?.textContent || ''));
+  const unitText = unitEl ? clean(unitEl.parentElement.textContent).match(/\/\s*([^)]+?)\s*\)/)?.[1] : null;
+  const unitFallback = unitEl ? null : text.match(/\(\s*[^\d()]{0,3}([\d.,]+)\s*\/\s*([^)]+?)\s*\)/);
+
+  const delivery = clean(c.querySelector('.udm-primary-delivery-message')?.textContent) || null;
+  const fee = delivery?.match(/\$\s*([\d.,]+)\s+delivery/i);
+  const left = text.match(/Only (\d+) left in stock/i);
 
   return {
     asin,
@@ -67,8 +77,13 @@ export function parseCard(c) {
     reviews,
     bought: bought ? abbrev(bought) : null,
     prime: !!c.querySelector('.a-icon-prime, [aria-label*="Prime"]'),
-    unitPrice: unit ? parseFloat(unit[1].replace(/,/g, '')) : null,
-    unit: unit ? clean(unit[2]) : null,
+    unitPrice: unitEl ? num(unitEl.querySelector('.a-offscreen')?.textContent)
+      : unitFallback ? parseFloat(unitFallback[1].replace(/,/g, '')) : null,
+    unit: unitText ?? (unitFallback ? clean(unitFallback[2]) : null),
+    delivery,
+    deliveryFee: !delivery ? null : /\bFREE\b/i.test(delivery) ? 0 : fee ? parseFloat(fee[1].replace(/,/g, '')) : null,
+    badge: clean(c.querySelector('.a-badge-label-inner')?.textContent) || null,
+    lowStock: left ? parseInt(left[1], 10) : null,
     image: c.querySelector('img.s-image')?.getAttribute('src') ?? null,
   };
 }

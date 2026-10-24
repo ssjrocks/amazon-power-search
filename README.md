@@ -21,8 +21,12 @@ price filters change which products you see. Measured on amazon.com.au (2026-10-
 - If Amazon serves a CAPTCHA the scan pauses, opens the CAPTCHA tab and a notification, polls until you
   have solved it, then carries on from the same request.
 - Results are saved locally in IndexedDB; an unfinished scan resumes where it stopped.
-- `src/filter.js` filters (words, price, rating, reviews, Prime, sponsored) and sorts (price, unit price,
-  rating adjusted for review count, rating per dollar, reviews, bought last month).
+- `src/filter.js` filters (words, price, rating, reviews, Prime, sponsored, free delivery) and sorts (price,
+  unit price normalised per 100 g / 100 ml, rating adjusted for review count, rating per dollar, reviews,
+  bought last month, delivery cost, brand, title).
+- Two views: **List** (compact rows with brand, delivery, badges, low-stock) and **Grid** (cards). Each view has
+  its own image-size slider; the choice of view, sizes and sort is remembered. Click a column header or use
+  the Sort menu to sort.
 
 Nothing leaves your browser. The extension talks only to the Amazon sites it has permission for.
 
@@ -69,8 +73,9 @@ First install: open the `.xpi` from the latest release in Firefox. After that it
 
 ## Status
 
-Working. Not yet done: splitting crowded bands by other facets (brand, rating, Prime) and checking the
-Prime / unit-price / bought-last-month selectors against real markup.
+Working. Checked against real amazon.com.au markup (logged out): title, brand, price, strike price, unit
+price, rating, reviews, bought, delivery, badge, low stock. Not yet checked: the Prime marker (needs a
+logged-in page). Not yet done: splitting crowded price bands by other facets (brand, rating, Prime).
 
 Amazon's conditions of use restrict automated access. This tool is for personal use at a low request
 rate; use it at your own risk.
