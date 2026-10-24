@@ -60,6 +60,18 @@ test('parses fields from a normal and a sponsored card', () => {
   assert.equal(b.title, 'Ad Cable');
 });
 
+test('takes the product title, not the brand line, when a card has two h2s', () => {
+  const html = page('1-48 of 700 results', [`
+<div role="listitem" data-asin="B9" data-component-type="s-search-result">
+  <div class="a-row a-color-secondary"><h2 class="a-size-mini"><span>Waveshare</span></h2></div>
+  <a class="a-link-normal" href="/dp/B9"><h2 aria-label="3.5inch Touch Display Module for Raspberry Pi Pico"><span>3.5inch Touch Display Module for Raspberry Pi Pico</span></h2></a>
+  <span class="a-price"><span class="a-offscreen">$16.80</span></span>
+</div>`]);
+  const c = parseSearchPage(doc(html), html).cards[0];
+  assert.equal(c.title, '3.5inch Touch Display Module for Raspberry Pi Pico');
+  assert.equal(c.brand, 'Waveshare');
+});
+
 test('a card without a price has price null', () => {
   const html = page('1 result', [card({ asin: 'B3', title: 'See options' })]);
   assert.equal(parseSearchPage(doc(html), html).cards[0].price, null);
@@ -89,7 +101,28 @@ test('filters and sorts', () => {
   assert.equal(ids(applyFilters(items, { include: 'braided', exclude: 'adapter' })), 'acd');
   assert.equal(ids(applyFilters(items, { minRating: 4.6 })), 'cd');
   assert.equal(ids(applyFilters(items, { primeOnly: true })), 'a');
-  assert.equal(ids(sortItems(items, 'price-asc')), 'bcad'); // no-price last
-  assert.equal(ids(sortItems(items, 'price-desc')), 'acbd');
+  assert.equal(ids(sortItems(items, 'price', 'asc')), 'bcad'); // no-price last
+  assert.equal(ids(sortItems(items, 'price', 'desc')), 'acbd');
   assert.ok(bayes(5, 2) < bayes(4.6, 3000)); // 3 reviews don't beat 3000
+  assert.equal(ids(sortItems(items, 'title')), 'cadb');
+  assert.equal(ids(sortItems(items, 'reviews')), 'adbc'); // default direction: most first
+  assert.equal(ids(sortItems(items, 'reviews', 'asc')), 'cbda');
+});
+
+test('real amazon.com.au cards: brand line is not the title, sponsored and price/rating parsed', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const html = await readFile(new URL('./fixtures/waveshare.html', import.meta.url), 'utf8');
+  const r = parseSearchPage(doc(html), html);
+  assert.deepEqual({ total: r.total, over: r.over, n: r.cards.length }, { total: 6000, over: true, n: 2 });
+  const [ad, org] = r.cards;
+  assert.equal(ad.title, '3.5inch Touch Display Module for Raspberry Pi Pico 65K Colors 480×320 Pixels SPI Interface');
+  assert.equal(ad.brand, 'Waveshare');
+  assert.equal(ad.sponsored, true);
+  assert.equal(ad.price, 43.99);
+  assert.equal(ad.rating, 3.6);
+  assert.equal(ad.reviews, 15);
+  assert.equal(org.title, 'Solar Power Manager Module (D), Support 6V~24V Solar Panel & Type-C Power Adapter, 5V/3A Output');
+  assert.equal(org.sponsored, false);
+  assert.equal(org.price, 33.8);
+  assert.equal(org.reviews, 97);
 });

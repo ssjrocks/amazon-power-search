@@ -31,23 +31,12 @@
   <label><input id="f-sponsored" type="checkbox" checked> Hide sponsored</label>
   <label><input id="f-noprice" type="checkbox" checked> Hide no price</label>
   <label><input id="f-prime" type="checkbox"> Prime only</label>
-  <label>Sort
-    <select id="sort">
-      <option value="price-asc">Price, low to high</option>
-      <option value="price-desc">Price, high to low</option>
-      <option value="unit-asc">Unit price, low to high</option>
-      <option value="value">Best value (rating per dollar)</option>
-      <option value="rating">Rating (adjusted for review count)</option>
-      <option value="reviews">Most reviews</option>
-      <option value="bought">Most bought last month</option>
-    </select>
-  </label>
   <button id="csv" type="button">Export CSV</button>
 </section>
 
 <div id="count"></div>
 <table id="results">
-  <thead><tr><th></th><th>Product</th><th>Price</th><th>Unit</th><th>Rating</th><th>Reviews</th><th>Bought</th><th></th></tr></thead>
+  <thead><tr><th></th><th data-sort="title">Product</th><th class="num" data-sort="price">Price</th><th class="num" data-sort="unit">Unit</th><th class="num" data-sort="rating" title="Rating adjusted for how many reviews it has">Rating</th><th class="num" data-sort="reviews">Reviews</th><th class="num" data-sort="bought">Bought</th><th class="num" data-sort="value" title="Adjusted rating per dollar">Value</th></tr></thead>
   <tbody></tbody>
 </table>
 <button id="more" hidden>Show more</button>

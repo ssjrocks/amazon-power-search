@@ -24,23 +24,28 @@ export function applyFilters(items, f = {}) {
   });
 }
 
-const nullsLast = (get, dir) => (a, b) => {
-  const x = get(a), y = get(b);
-  if (x == null && y == null) return 0;
-  if (x == null) return 1;
-  if (y == null) return -1;
-  return dir * (x - y);
-};
-
-export const SORTS = {
-  'price-asc': nullsLast((i) => i.price, 1),
-  'price-desc': nullsLast((i) => i.price, -1),
-  'unit-asc': nullsLast((i) => i.unitPrice, 1),
-  'rating': nullsLast((i) => bayes(i.rating, i.reviews), -1),
-  'reviews': nullsLast((i) => i.reviews, -1),
-  'bought': nullsLast((i) => i.bought, -1),
+// Each sort is a value getter plus the direction a first click should use.
+export const SORT_KEYS = {
+  title: { get: (i) => (i.title || '').toLowerCase(), dir: 'asc' },
+  price: { get: (i) => i.price, dir: 'asc' },
+  unit: { get: (i) => i.unitPrice, dir: 'asc' },
+  rating: { get: (i) => bayes(i.rating, i.reviews), dir: 'desc' },
+  reviews: { get: (i) => i.reviews, dir: 'desc' },
+  bought: { get: (i) => i.bought, dir: 'desc' },
   // rating quality per dollar
-  'value': nullsLast((i) => (i.price ? bayes(i.rating, i.reviews) / i.price : null), -1),
+  value: { get: (i) => (i.price ? bayes(i.rating, i.reviews) / i.price : null), dir: 'desc' },
 };
 
-export const sortItems = (items, key) => [...items].sort(SORTS[key] || SORTS['price-asc']);
+export const valueScore = (i) => SORT_KEYS.value.get(i);
+
+export function sortItems(items, key = 'price', dir) {
+  const { get, dir: first } = SORT_KEYS[key] || SORT_KEYS.price;
+  const sign = (dir || first) === 'asc' ? 1 : -1;
+  return [...items].sort((a, b) => {
+    const x = get(a), y = get(b);
+    if (x == null && y == null) return 0;
+    if (x == null) return 1; // missing values always last
+    if (y == null) return -1;
+    return x < y ? -sign : x > y ? sign : 0;
+  });
+}

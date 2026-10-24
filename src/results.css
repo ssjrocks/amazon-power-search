@@ -18,3 +18,7 @@ a:hover { text-decoration: underline; }
 .tag { font-size: 11px; padding: 1px 6px; border-radius: 4px; background: var(--line); color: var(--muted); margin-left: 6px; }
 #more { display: block; margin: 12px auto; }
 @media (max-width: 700px) { th:nth-child(4), td:nth-child(4), th:nth-child(7), td:nth-child(7) { display: none; } }
+th[data-sort] { cursor: pointer; user-select: none; white-space: nowrap; }
+th[data-sort]:hover { color: var(--accent); }
+th[aria-sort="ascending"]::after { content: " \25B2"; font-size: 10px; }
+th[aria-sort="descending"]::after { content: " \25BC"; font-size: 10px; }

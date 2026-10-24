@@ -1,6 +1,6 @@
 import { collect, newState } from './collector.js';
 import { DOMAINS, makeFetchPage, searchUrl } from './amazon.js';
-import { applyFilters, sortItems } from './filter.js';
+import { applyFilters, SORT_KEYS, sortItems, valueScore } from './filter.js';
 import { loadScan, saveScan, scanKey } from './store.js';
 
 const $ = (id) => document.getElementById(id);
@@ -10,6 +10,7 @@ let items = new Map();     // asin -> item
 let shown = PAGE;
 let run = null;            // { abort, domain, query, state } while scanning
 let headline = null;
+let sort = { key: 'price', dir: 'asc' };
 
 // ---- form setup ----------------------------------------------------------
 for (const d of DOMAINS) $('domain').add(new Option(`amazon.${d}`, d));
@@ -133,7 +134,7 @@ const currentFilters = () => ({
   hideSponsored: $('f-sponsored').checked, hideNoPrice: $('f-noprice').checked, primeOnly: $('f-prime').checked,
 });
 
-const view = () => sortItems(applyFilters([...items.values()], currentFilters()), $('sort').value);
+const view = () => sortItems(applyFilters([...items.values()], currentFilters()), sort.key, sort.dir);
 const fmt = (n) => (n == null ? '' : n.toLocaleString());
 const money = (n) => (n == null ? '' : n.toFixed(2));
 
@@ -163,13 +164,33 @@ function render() {
     cell(tr, it.rating ?? '', 'num');
     cell(tr, fmt(it.reviews), 'num');
     cell(tr, fmt(it.bought), 'num');
-    tr.insertCell();
+    const v = valueScore(it);
+    cell(tr, v == null ? '' : v.toFixed(2), 'num');
   }
   $('more').hidden = rows.length <= shown;
 }
 
+function markSort() {
+  for (const th of document.querySelectorAll('th[data-sort]')) {
+    if (th.dataset.sort === sort.key) th.setAttribute('aria-sort', sort.dir === 'asc' ? 'ascending' : 'descending');
+    else th.removeAttribute('aria-sort');
+  }
+}
+for (const th of document.querySelectorAll('th[data-sort]')) {
+  th.addEventListener('click', () => {
+    const key = th.dataset.sort;
+    sort = key === sort.key
+      ? { key, dir: sort.dir === 'asc' ? 'desc' : 'asc' }
+      : { key, dir: SORT_KEYS[key].dir };
+    shown = PAGE;
+    markSort();
+    render();
+  });
+}
+markSort();
+
 $('more').addEventListener('click', () => { shown += PAGE; render(); });
-for (const id of ['f-include', 'f-exclude', 'f-min', 'f-max', 'f-rating', 'f-reviews', 'f-sponsored', 'f-noprice', 'f-prime', 'sort']) {
+for (const id of ['f-include', 'f-exclude', 'f-min', 'f-max', 'f-rating', 'f-reviews', 'f-sponsored', 'f-noprice', 'f-prime']) {
   $(id).addEventListener('input', () => { shown = PAGE; render(); });
 }
 

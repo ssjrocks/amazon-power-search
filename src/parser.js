@@ -31,8 +31,13 @@ export function parseTotal(text) {
 export function parseCard(c) {
   const asin = c.getAttribute('data-asin');
   const text = clean(c.textContent);
-  const h2 = c.querySelector('h2');
+  // Newer cards have two h2s: a brand line, then the product title inside the
+  // product link. Older cards have just the title.
+  const h2s = [...c.querySelectorAll('h2')];
+  const h2 = c.querySelector('a h2') || [...h2s].sort((a, b) => b.textContent.length - a.textContent.length)[0];
+  const brandEl = h2s.find((e) => e !== h2 && !e.closest('a'));
   const title = clean(h2?.getAttribute('aria-label') || h2?.textContent).replace(/^Sponsored Ad\s*[–-]\s*/i, '');
+  const brand = brandEl ? clean(brandEl.textContent) : null;
 
   const sponsored =
     !!c.querySelector('.puis-sponsored-label-text, [aria-label^="Sponsored"]') ||
@@ -54,6 +59,7 @@ export function parseCard(c) {
   return {
     asin,
     title,
+    brand,
     sponsored,
     price,
     listPrice,
