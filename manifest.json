@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "name": "Amazon Power Search",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "description": "Collects every result an Amazon search will give (past the page cap) and lets you sort and filter them yourself.",
   "browser_specific_settings": {
     "gecko": {

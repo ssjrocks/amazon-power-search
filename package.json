@@ -1,6 +1,6 @@
 {
   "name": "amazon-power-search",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "description": "Firefox extension: collect every result an Amazon search will give and sort/filter it yourself.",
